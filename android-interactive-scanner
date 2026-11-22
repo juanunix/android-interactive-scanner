@@ -1,0 +1,487 @@
+---
+name: android-interactive-architecture
+description: >
+  Analyzes an existing Android codebase (Kotlin/Java, Gradle modules, Activities,
+  Fragments, Jetpack Compose, ViewModels, UseCases, Interactors, Repositories,
+  DataSources, Retrofit/Ktor, Room/DataStore, WorkManager, Services, Observers,
+  and third-party SDKs) and generates a static, portable, interactive HTML/web
+  architecture explorer visualizing execution flows, class structures, and data
+  transformations grounded strictly in real source code.
+---
+
+# Android Interactive Architecture Flow Documentation
+
+## 1. Objective & Strict Scope
+
+Analyze a real Android repository and generate a **static, interactive HTML/web documentation site** that visualizes the application's architecture, execution flows, component interactions, and data transformations.
+
+### Included in Scope
+- Architecture components across all inferred project layers.
+- Complete execution chains from real entry points (UI or background) to terminal exit points (APIs, databases, local storage, SDKs, workers, notifications, or another flow).
+- Directed relationships between classes, interfaces, objects, and external dependencies.
+- Method calls, signatures, parameters, parameter types, and return types.
+- Data transferred and explicit data transformations (`Intent/NavArgs -> Request -> DTO -> Entity -> DomainModel -> UiState`).
+- Communication mechanisms (`Direct call`, `Suspend function`, `StateFlow`, `SharedFlow`, `Flow`, `LiveData`, `Callback`, `Intent / Bundle`, `Navigation Args`, `Hilt / Dagger DI`, `EventBus / Observer`, `WorkManager`, `Retrofit HTTP`, `Room SQL`, `SDK Bridge`, `Reflection / Dynamic`).
+- Synchronous vs. asynchronous execution flags.
+- Line-numbered source code traceability (`file`, `symbol`, `line`, relevant snippet).
+
+### Excluded (Do NOT Generate)
+- Architecture compliance audits or Clean Architecture policing.
+- Code quality, performance, security, or technical debt scoring.
+- Refactoring recommendations or coding convention enforcement.
+- Unit test coverage reports or invented health/innovation metrics.
+
+---
+
+## 2. Accuracy & Anti-Hallucination Rules
+
+1. **Analyze real source code only.** Never invent components, methods, parameters, models, endpoints, or relationships.
+2. **Never invent line numbers.** Omit `line` when unavailable; always preserve `file` and `symbol`.
+3. **Never force Clean Architecture.** If a feature uses direct `ViewModel -> RepositoryImpl` (without `UseCase` or repository interface) or `Screen -> DataSource`, document the real architecture as implemented.
+4. **Reuse shared nodes across flows.** Define shared components (`AppDatabase`, `OkHttpClient`, `TokenLocalDataSource`, `AnalyticsTrackerSdk`, etc.) once in `components` and reference their `componentId` from each flow.
+5. **Separate DI from execution flow.** Mark `@Binds` / `@Provides` / `Injects dependency` / `Implements` / `Extends` edges with `isDependencyInjection: true` so users can toggle them independently of runtime execution.
+6. **Distinguish navigation from invocation** and **data transformation from simple data passing**.
+7. **Surface certainty explicitly via `accuracy`:**
+   - `"verified"`: Directly observed in Kotlin/Java source, XML layouts, `AndroidManifest.xml`, or Compose `NavHost`.
+   - `"inferred"`: Resolved indirectly (e.g., Hilt bindings, manifest deep-link URI patterns, compiled AAR). Document reasoning in `accuracyNote`.
+   - `"unknown"`: Dynamic or reflective calls (`Class.forName(...)`, dynamic reflection) whose downstream receiver cannot be resolved statically.
+8. **Never stop at the ViewModel.** Follow the chain down to terminal exit points.
+9. **Split large repositories into focused flows** (never one monolithic unreadable graph). Analyze incrementally by Gradle module or selected entry point.
+
+---
+
+## 3. Complete Taxonomies
+
+### Node Types (24 Supported, Extensible)
+
+| Category | Node Types |
+|---|---|
+| Presentation & UI | `Activity`, `Fragment`, `Compose Screen`, `ViewModel`, `UI Component`, `Navigation` |
+| Business Logic | `UseCase`, `Interactor`, `Controller`, `Manager`, `Observer` |
+| Data & Persistence | `Repository`, `Repository Implementation`, `DataSource`, `Database`, `DAO`, `Mapper`, `Model` |
+| Network | `API Service`, `Network Client` |
+| External & Other | `SDK`, `External Library`, `External System`, `Other` (e.g., `WorkManager Worker`, `FirebaseMessagingService`, `BroadcastReceiver`, legacy bridges) |
+
+### Relationship Types (19 Supported)
+`Calls`, `Invokes`, `Observes`, `Collects`, `Emits`, `Returns`, `Passes data`, `Transforms data`, `Navigates to`, `Injects dependency`, `Reads from`, `Writes to`, `Requests from API`, `Responds to`, `Implements`, `Extends`, `Uses SDK`, `Subscribes to`, `Publishes event`
+
+### Communication Mechanisms (16 Supported)
+`Direct call`, `Suspend function`, `StateFlow`, `SharedFlow`, `Flow`, `LiveData`, `Callback`, `Intent / Bundle`, `Navigation Args`, `Hilt / Dagger DI`, `EventBus / Observer`, `WorkManager`, `Retrofit HTTP`, `Room SQL`, `SDK Bridge`, `Reflection / Dynamic`
+
+### Architecture Layers & Color System
+
+| Layer | Accent Hex | Role |
+|---|---|---|
+| `Presentation` | `#38BDF8` (Sky) | Activities, Fragments, Compose Screens, UI Components, ViewModels, NavHosts, Controllers, Managers |
+| `Domain` | `#A78BFA` (Violet) | UseCases, Interactors, Repository Interfaces, Domain Models, Event Observers |
+| `Data` | `#34D399` (Emerald) | Repository Implementations, Remote DataSources, Mappers, Paging RemoteMediators, Sync Workers |
+| `Network` | `#FB923C` (Orange) | Retrofit/Ktor API Services, OkHttpClients, Interceptors, Network DTOs |
+| `Local Storage` | `#FBBF24` (Amber) | Room Databases, DAOs, Entities, DataStore, EncryptedSharedPreferences |
+| `External` | `#F472B6` (Pink) | Backend REST/GraphQL APIs, Third-Party SDKs (Firebase, Stripe, Segment), Image/Media Libraries (Coil) |
+
+---
+
+## 4. 7-Phase Execution Workflow
+
+### Phase 1 — Project Discovery
+1. Inspect `settings.gradle(.kts)`, `build.gradle(.kts)`, and `AndroidManifest.xml` to map Gradle modules (`:app`, `:feature:*`, `:domain:*`, `:data:*`, `:core:*`, `:legacy:*`).
+2. Scan Kotlin and Java source files for Activities, Fragments, `@Composable` screens, `ViewModel` subclasses, UseCases/Interactors, Repositories, DataSources, Retrofit/Ktor APIs, Room `@Database`/`@Dao`, DataStore, Managers, Controllers, Observers, Workers, Services, and SDK wrappers.
+3. Map DI bindings (`@HiltViewModel`, `@Module`, `@Binds`, `@Provides`, Koin modules, manual factories).
+
+### Phase 2 — Entry Point Discovery
+Identify real entry points per flow:
+- `MAIN` / `LAUNCHER` Activity.
+- Deep-link `intent-filter` Activities (`app://...`).
+- Compose `NavHost` routes & Fragment destinations.
+- Background `FirebaseMessagingService`, `Service`, `BroadcastReceiver`, and `CoroutineWorker`.
+
+### Phase 3 — Flow Reconstruction
+For each flow:
+1. Start at its entry point (`isEntryPoint: true`).
+2. Trace every invocation, reactive collection, DI binding, navigation action, and event publication until terminal exit points (`isExitPoint: true`: Backend API, Room SQLite, DataStore/SharedPreferences, External SDK, OS NotificationManager, or WorkManager).
+3. Consolidate multiple calls between the same `(source, target)` pair into one `FlowEdge` with multiple entries inside `calls[]`.
+
+### Phase 4 — Data Flow & Transformation Analysis
+1. Document input parameters, return types, sync vs. async, and communication mechanism per call.
+2. Track every model transformation (`Intent`, `Bundle`, `NavArgs`, `Request`, `DTO`, `Entity`, `Domain`, `UiState`, `Event`) and store the ordered chain in `flow.transformationPipeline`.
+
+### Phase 5 — Graph & Data Model Generation
+Generate the decoupled JSON model (`project.json`, `flows.json`, `components.json`, `flows/<flow-id>.json`):
+- Populate structured class members per node (`constructorParams`, `properties`, `publicMethods`, `privateMethods`, `calledByOthers`, `callingOthers`, `dataReceived`, `dataEmitted`) and concise `classSnippet`.
+- Assign clean non-overlapping layer coordinates left-to-right (`Presentation` -> `Domain` -> `Data` -> `Network` [top] / `Local Storage` [bottom] -> `External`) so edges route cleanly without crossing unrelated layers.
+
+### Phase 6 — Static Interactive Web Explorer Generation
+Build a static, offline-ready web application (no backend server required; bundle dependencies locally or via static build).
+
+#### Layout Architecture (Android Studio / IntelliJ IDEA Inspired)
+- **Dark theme by default** (`#0D1117` canvas, `#131820` sidebars, `#161B22` headers) with an **optional Light theme toggle** (`#F8FAFC` / `#FFFFFF`).
+- **Typography**: `Plus Jakarta Sans` (display/headings), `DM Sans` (body), `JetBrains Mono` with `tabular-nums` (code, signatures, counts, line numbers).
+- **3-Zone Top Bar**:
+  1. Brand wordmark (`DroidFlow Atlas`).
+  2. Global Search trigger (`Ctrl+K` / `Cmd+K`), `Data Model` modal trigger, `Skill Spec` modal trigger, Light/Dark theme toggle.
+  3. Primary CTA (`Export JSON` downloading the full architecture bundle).
+- **3-Pane IDE Workspace** (with responsive `Flows | Architecture Graph | Inspector` switcher on viewports `< 1024px`):
+  1. **Left Sidebar (`272px`)**: Project header (`name`, `applicationId`, `Kotlin version`), selectable **Application Flows** list (name, entry point, node/edge counts), searchable **Flow Components** index, and active flow architecture pattern + Gradle modules.
+  2. **Center Interactive Graph Canvas**:
+     - Filter bar: Quick Presets (`All Components`, `Android UI`, `Data Layer`, `Network`, `Database`, `External SDKs`), Layer dropdown, Component Type dropdown, `DI Edges` toggle, `Collapse/Expand Layers` toggle, and Zoom cluster (`-`, `%`, `+`, `Fit`, `Reset Layout`).
+     - Draggable nodes with live Bezier edge recalculation.
+     - Collapsible Architecture Layer bounding boxes: collapsing a layer turns it into a compact summary card and reroutes cross-layer edges to the group card cleanly.
+     - Edge visual grammar: solid curves for execution, dashed violet for DI (`Implements` / `Injects dependency` / `Extends`), dotted for reactive streams (`Collects`, `Observes`, `Subscribes to`, `Publishes event`), dashed amber for `inferred`/`unknown`, wide `18px` invisible hit paths for effortless clicking.
+     - Selection highlighting: selecting a node highlights incoming/outgoing edges and immediate neighbors while dimming unrelated nodes/edges (`opacity: 0.24`/`0.18`); selecting an edge highlights source and target nodes.
+     - Bottom **Data Transformations** horizontal strip linking each transformation stage directly to its responsible component node.
+  3. **Right Details Inspector (`390px–420px`)**:
+     - **Default (No Selection)**: Flow overview, execution summary, detected pattern, Gradle modules, clickable Entry Point, clickable Exit Points, and Data Transformation Chain.
+     - **Node Selected**: 4 tabs:
+       - `Overview`: Responsibility, Entry/Exit/Endpoint metadata, Source file path, clickable `Invoked By`, clickable `Invokes / Connects To`, clickable `Dependencies`.
+       - `Class Structure`: 8 collapsible/bordered member tables (`Constructor`, `Properties`, `Public Methods`, `Private Methods`, `Called By Other Components`, `Calling Other Components`, `Data Received`, `Data Emitted / Returned`).
+       - `Connections`: Detailed list of all incoming and outgoing calls for that node.
+       - `Source`: Line-numbered Kotlin/Java snippet with `symbol` and `line` traceability.
+     - **Edge Selected**:
+       - Clickable `From -> To` component links.
+       - Multi-call switcher tabs when `edge.calls.length > 1`.
+       - Accuracy badge (`Verified in source` / `Inferred` / `Unresolved / Dynamic`) + `accuracyNote`.
+       - Signature, Mechanism, Sync/Async mode, Input Parameters (`name: Type`), Return Type, Data Transferred, Data Transformation Applied, and line-numbered Source Reference snippet.
+- **Global Search Modal (`Ctrl+K` / `Cmd+K`)**:
+  - Keyboard-navigable (`ArrowUp`, `ArrowDown`, `Enter`, `Esc`) search across **Class names, Methods, Properties, Models/Data, API endpoints, Package names, and Flow names**, jumping straight to the target flow and centering/highlighting the matched node or edge.
+- **Data Model & Skill Modal**:
+  - View, copy, and download `flows/<flow-id>.json`, `data/project.json`, `data/flows.json`, and `data/components.json`.
+
+### Phase 7 — Automated Validation
+Verify all invariants before shipping:
+- Zero broken `componentId`, `entryPointId`, `exitPointIds`, `edge.source`, or `edge.target` references.
+- Every edge has `calls.length >= 1` with valid `sourceReference`.
+- Typecheck (`tsc --noEmit`) and production static build (`vite build` or static bundle check) pass with 0 errors.
+
+---
+
+## 5. Canonical Data Schema (TypeScript)
+
+```typescript
+export type NodeType =
+  | 'Activity' | 'Fragment' | 'Compose Screen' | 'ViewModel' | 'UI Component' | 'Navigation'
+  | 'UseCase' | 'Interactor' | 'Repository' | 'Repository Implementation' | 'DataSource'
+  | 'API Service' | 'Network Client' | 'Database' | 'DAO' | 'Mapper' | 'Model'
+  | 'Manager' | 'Controller' | 'Observer' | 'SDK' | 'External Library' | 'External System' | 'Other';
+
+export type ArchitectureLayer =
+  | 'Presentation' | 'Domain' | 'Data' | 'Network' | 'Local Storage' | 'External';
+
+export type EdgeRelationshipType =
+  | 'Calls' | 'Invokes' | 'Observes' | 'Collects' | 'Emits' | 'Returns'
+  | 'Passes data' | 'Transforms data' | 'Navigates to' | 'Injects dependency'
+  | 'Reads from' | 'Writes to' | 'Requests from API' | 'Responds to'
+  | 'Implements' | 'Extends' | 'Uses SDK' | 'Subscribes to' | 'Publishes event';
+
+export type CommunicationMechanism =
+  | 'Direct call' | 'Suspend function' | 'StateFlow' | 'SharedFlow' | 'Flow' | 'LiveData'
+  | 'Callback' | 'Intent / Bundle' | 'Navigation Args' | 'Hilt / Dagger DI'
+  | 'EventBus / Observer' | 'WorkManager' | 'Retrofit HTTP' | 'Room SQL'
+  | 'SDK Bridge' | 'Reflection / Dynamic';
+
+export type RelationshipAccuracy = 'verified' | 'inferred' | 'unknown';
+
+export interface SourceReference {
+  file: string;
+  symbol: string;
+  line?: number;
+}
+
+export interface ArchitectureComponent {
+  id: string;
+  name: string;
+  type: NodeType;
+  layer: ArchitectureLayer;
+  gradleModule: string;
+  package: string;
+  file: string;
+  description: string;
+  isEntryPoint?: boolean;
+  entryPointKind?: string;
+  isExitPoint?: boolean;
+  exitPointKind?: string;
+  apiEndpoint?: string;
+  dependencies: string[];
+  members: {
+    constructorParams: string[];
+    properties: string[];
+    publicMethods: string[];
+    privateMethods: string[];
+    calledByOthers: string[];
+    callingOthers: string[];
+    dataReceived: string[];
+    dataEmitted: string[];
+  };
+  classSnippet: string;
+  sourceReference: SourceReference;
+}
+
+export interface EdgeCallDetail {
+  id: string;
+  relationshipType: EdgeRelationshipType;
+  method: string;
+  signature: string;
+  parameters: Array<{ name: string; type: string }>;
+  returnType: string;
+  dataTransferred: string;
+  dataTransformation?: string;
+  mechanism: CommunicationMechanism;
+  isAsync: boolean;
+  isDependencyInjection?: boolean;
+  accuracy: RelationshipAccuracy;
+  accuracyNote?: string;
+  sourceReference: SourceReference;
+  codeSnippet: string;
+}
+
+export interface FlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  primaryType: EdgeRelationshipType;
+  label: string;
+  dataLabel?: string;
+  isDependencyInjection?: boolean;
+  accuracy: RelationshipAccuracy;
+  calls: EdgeCallDetail[];
+}
+
+export interface ArchitectureFlow {
+  id: string;
+  name: string;
+  shortName: string;
+  category: string;
+  architecturePattern: string;
+  entryPointId: string;
+  entryPointLabel: string;
+  exitPointIds: string[];
+  summary: string;
+  gradleModules: string[];
+  nodes: Array<{ componentId: string; x: number; y: number; roleInFlow?: string }>;
+  edges: FlowEdge[];
+  transformationPipeline: Array<{
+    id: string;
+    modelName: string;
+    modelType: 'Intent' | 'Bundle' | 'NavArgs' | 'Request' | 'DTO' | 'Entity' | 'Domain' | 'UiState' | 'Event';
+    viaComponentId?: string;
+    viaComponentName?: string;
+    description: string;
+  }>;
+}
+
+export interface ArchitectureDocumentationModel {
+  project: {
+    name: string;
+    applicationId: string;
+    minSdk: number;
+    targetSdk: number;
+    kotlinVersion: string;
+    diFramework: string;
+    modules: string[];
+  };
+  components: Record<string, ArchitectureComponent>;
+  flows: ArchitectureFlow[];
+}
+```
+
+---
+
+## 6. Reference Scenarios to Model When Analyzing an Android App
+
+When documenting a full Android project, ensure flows cover every real pattern present in the codebase:
+
+1. **Activity + Intent / DeepLink + Compose + Clean Architecture (`Store Details`)**:
+   `Activity -> NavHost -> Compose Screen -> UI Component -> ViewModel -> UseCase -> Repository (Interface) -> RepositoryImpl -> Remote/Local DataSources -> Retrofit API + Room DAO/Database -> External Backend`, with `DTO -> Entity -> DomainModel -> UiState` mappers.
+2. **Legacy Fragment + LiveData + Controller + Manager + Auth SDK (`Authentication`)**:
+   `LauncherActivity -> Controller -> BiometricManager + Fragment (LiveData) -> ViewModel -> UseCase -> RepositoryImpl -> DataSource -> Retrofit API + EncryptedSharedPreferences + FirebaseAuthSdk`.
+3. **Interactor + Payment SDK + EventBus + WorkManager (`Checkout & Payment`)**:
+   `Compose Screen -> ViewModel -> Interactor -> StripeSdk + RepositoryImpl -> PaymentApi + OrderDao`, publishing `SharedFlow` events to `OrderEventObserver` and enqueuing `WorkManager` `CoroutineWorker`.
+4. **Offline-First Reactive Paging (`Home Feed`)**:
+   `Compose Screen -> ViewModel -> UseCase -> RepositoryImpl (Paging 3 Pager + RemoteMediator) -> Room PagingSource DAO + Retrofit API`.
+5. **Direct MVVM without Domain Layer + Reflective/Unknown Edge (`Profile & Preferences`)**:
+   `Fragment -> ViewModel -> RepositoryImpl` directly (no `UseCase`), combining Retrofit + Jetpack `DataStore`, plus an `inferred`/`unknown` edge for reflective legacy Java AAR calls (`LegacyAnalyticsBridge`).
+6. **Reactive Debounced Search (`Product Search`)**:
+   `SearchScreen -> SearchBarComponent -> ViewModel (debounce + flatMapLatest) -> UseCase -> RepositoryImpl -> SearchApiService + SearchHistoryDao`.
+7. **Non-UI Background Entry Point (`Push Notification & Order Sync`)**:
+   `OrderPushService (Extends FirebaseMessagingService) -> NotificationController -> OrderSyncWorker + DeepLinkRouter (PendingIntent) + SystemNotificationManager -> OrderDetailScreen`.
+
+---
+
+## 7. Complete Example JSON Payload (`store-details` + `inferred/unknown` Edge Pattern)
+
+```json
+{
+  "project": {
+    "name": "MercadoFlow Android",
+    "applicationId": "com.mercadomobile.android",
+    "minSdk": 26,
+    "targetSdk": 35,
+    "kotlinVersion": "2.1.0",
+    "diFramework": "Hilt (Dagger) + AssistedInject WorkManager",
+    "modules": [":app", ":feature:store", ":domain:store", ":data:store", ":core:network", ":core:database"]
+  },
+  "components": {
+    "store-activity": {
+      "id": "store-activity",
+      "name": "StoreActivity",
+      "type": "Activity",
+      "layer": "Presentation",
+      "gradleModule": ":feature:store",
+      "package": "com.mercadomobile.feature.store.ui",
+      "file": "feature/store/src/main/kotlin/com/mercadomobile/feature/store/ui/StoreActivity.kt",
+      "description": "Entry-point Activity extracting EXTRA_STORE_ID from Intent or app://store/{id} deep link.",
+      "isEntryPoint": true,
+      "entryPointKind": "Activity + DeepLink Intent",
+      "dependencies": ["store-viewmodel"],
+      "members": {
+        "constructorParams": [],
+        "properties": ["private val viewModel: StoreViewModel by viewModels()"],
+        "publicMethods": ["override fun onCreate(savedInstanceState: Bundle?)"],
+        "privateMethods": [],
+        "calledByOthers": ["Android OS ActivityThread"],
+        "callingOthers": ["viewModel.loadStore(storeId)"],
+        "dataReceived": ["Intent(EXTRA_STORE_ID: String)"],
+        "dataEmitted": ["storeId: String"]
+      },
+      "classSnippet": "viewModel.loadStore(storeId)",
+      "sourceReference": { "file": "StoreActivity.kt", "symbol": "StoreActivity.onCreate", "line": 24 }
+    },
+    "store-viewmodel": {
+      "id": "store-viewmodel",
+      "name": "StoreViewModel",
+      "type": "ViewModel",
+      "layer": "Presentation",
+      "gradleModule": ":feature:store",
+      "package": "com.mercadomobile.feature.store.vm",
+      "file": "feature/store/src/main/kotlin/com/mercadomobile/feature/store/vm/StoreViewModel.kt",
+      "description": "Triggers GetStoreDetailsUseCase and exposes StateFlow<StoreUiState>.",
+      "dependencies": ["get-store-details-usecase"],
+      "members": {
+        "constructorParams": ["private val getStoreDetailsUseCase: GetStoreDetailsUseCase"],
+        "properties": ["val uiState: StateFlow<StoreUiState>"],
+        "publicMethods": ["fun loadStore(storeId: String)"],
+        "privateMethods": [],
+        "calledByOthers": ["StoreActivity.onCreate"],
+        "callingOthers": ["getStoreDetailsUseCase.execute(storeId)"],
+        "dataReceived": ["storeId: String", "StoreDomainModel"],
+        "dataEmitted": ["StateFlow<StoreUiState>"]
+      },
+      "classSnippet": "fun loadStore(storeId: String) { viewModelScope.launch { ... } }",
+      "sourceReference": { "file": "StoreViewModel.kt", "symbol": "StoreViewModel.loadStore", "line": 25 }
+    }
+  },
+  "flows": [
+    {
+      "id": "store-details",
+      "name": "Store Details & Catalog",
+      "shortName": "Store Details",
+      "category": "Commerce Journey",
+      "architecturePattern": "MVVM + Clean Architecture (Hilt DI)",
+      "entryPointId": "store-activity",
+      "entryPointLabel": "StoreActivity (Intent / DeepLink)",
+      "exitPointIds": ["store-viewmodel"],
+      "summary": "Traces Intent storeId extraction to StoreViewModel.",
+      "gradleModules": [":feature:store", ":domain:store", ":data:store"],
+      "nodes": [
+        { "componentId": "store-activity", "x": 60, "y": 110, "roleInFlow": "Entry Activity" },
+        { "componentId": "store-viewmodel", "x": 330, "y": 175, "roleInFlow": "State Holder" }
+      ],
+      "edges": [
+        {
+          "id": "e-store-act-vm",
+          "source": "store-activity",
+          "target": "store-viewmodel",
+          "primaryType": "Invokes",
+          "label": "loadStore(storeId)",
+          "dataLabel": "storeId: String",
+          "accuracy": "verified",
+          "calls": [
+            {
+              "id": "c-1",
+              "relationshipType": "Invokes",
+              "method": "loadStore",
+              "signature": "fun loadStore(storeId: String)",
+              "parameters": [{ "name": "storeId", "type": "String" }],
+              "returnType": "Unit",
+              "dataTransferred": "storeId: String",
+              "mechanism": "Direct call",
+              "isAsync": false,
+              "accuracy": "verified",
+              "sourceReference": { "file": "StoreActivity.kt", "symbol": "StoreActivity.onCreate", "line": 31 },
+              "codeSnippet": "viewModel.loadStore(storeId)"
+            }
+          ]
+        }
+      ],
+      "transformationPipeline": [
+        {
+          "id": "t-1",
+          "modelName": "Intent(EXTRA_STORE_ID)",
+          "modelType": "Intent",
+          "viaComponentId": "store-activity",
+          "viaComponentName": "StoreActivity",
+          "description": "Extracts storeId: String from Intent"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 8. Deliverables Structure & Automated Validation Script
+
+### Deliverables Layout
+```text
+android-interactive-architecture/
+├── index.html
+├── src/ (or assets/)
+│   ├── types/architecture.ts
+│   ├── utils/layerStyles.ts
+│   ├── data/componentsCatalog.ts
+│   ├── data/flowsData.ts
+│   └── components/
+│       ├── TopBar.tsx
+│       ├── FlowSidebar.tsx
+│       ├── ArchitectureGraph.tsx
+│       ├── DetailsInspector.tsx
+│       ├── GlobalSearchModal.tsx
+│       └── SchemaAndSkillModal.tsx
+├── data/
+│   ├── project.json
+│   ├── flows.json
+│   └── components.json
+├── flows/
+│   └── <flow-id>.json
+└── README.md
+```
+
+### Phase 7 Integrity Verification Script
+Run this validation script against the generated `ArchitectureDocumentationModel` before finishing:
+
+```bash
+npx tsx -e "
+import { ARCHITECTURE_DOCUMENTATION } from './src/data/flowsData.ts';
+const { components, flows } = ARCHITECTURE_DOCUMENTATION;
+let errors = 0;
+for (const flow of flows) {
+  const nodeIds = new Set(flow.nodes.map(n => n.componentId));
+  if (!nodeIds.has(flow.entryPointId)) { console.error('Invalid entryPoint:', flow.id); errors++; }
+  for (const exitId of flow.exitPointIds) {
+    if (!nodeIds.has(exitId)) { console.error('Invalid exitPoint:', flow.id, exitId); errors++; }
+  }
+  for (const n of flow.nodes) {
+    if (!components[n.componentId]) { console.error('Missing component:', n.componentId); errors++; }
+  }
+  for (const e of flow.edges) {
+    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) { console.error('Orphan edge:', flow.id, e.id); errors++; }
+    if (!e.calls || e.calls.length === 0) { console.error('Edge without calls:', flow.id, e.id); errors++; }
+  }
+}
+if (errors > 0) process.exit(1);
+console.log('Validation passed. Flows:', flows.length, 'Components:', Object.keys(components).length);
+"
+```
+
+### Usage Prompt Template
+> "Use the `android-interactive-architecture` skill on this Android repository. Discover the Gradle modules, entry points, and execution chains, generate the decoupled architecture JSON data model + static interactive web explorer, and run the Phase 7 integrity check and production build."
